@@ -6,7 +6,7 @@
 inline game_controller_input *
 getController(game_input *input, unsigned int controllerIndex) {
   ASSERT(controllerIndex < ARRAY_COUNT(input->controllers));
-  
+
   game_controller_input *result = &input->controllers[controllerIndex];
   return(result);
 }
@@ -42,10 +42,10 @@ internal void
 drawRectangle(game_screen_buffer *buffer,
               real32 realMinX, real32 realMinY, real32 realMaxX, real32 realMaxY,
               real32 R, real32 G, real32 B) {    
-    int32 minX = roundf(realMinX);
-    int32 minY = roundf(realMinY);
-    int32 maxX = roundf(realMaxX);
-    int32 maxY = roundf(realMaxY);
+    int32 minX = (int32) roundf(realMinX);
+    int32 minY = (int32) roundf(realMinY);
+    int32 maxX = (int32) roundf(realMaxX);
+    int32 maxY = (int32) roundf(realMaxY);
 
     if (minX < 0) {
       minX = 0;
@@ -85,10 +85,10 @@ drawBitmap(game_screen_buffer *buffer, bitmap_buffer *bitmap, real32 realX, real
     realX -= (real32) alignX;
     realY -= (real32) alignY;
 
-    int32 minX = roundf(realX);
-    int32 minY = roundf(realY);
-    int32 maxX = roundf(realX + (real32) bitmap->width);
-    int32 maxY = roundf(realY + (real32) bitmap->height);
+    int32 minX = (int32) roundf(realX);
+    int32 minY = (int32) roundf(realY);
+    int32 maxX = (int32) roundf(realX + (real32) bitmap->width);
+    int32 maxY = (int32) roundf(realY + (real32) bitmap->height);
 
     int32 sourceOffsetX = 0;
     if (minX < 0) {
@@ -280,8 +280,8 @@ gameUpdateAndRender(game_memory* memory, game_input *input, game_screen_buffer *
     runner->position.y = maxYPos;
   }
   int framesPerBitmap = 3;
-  int pixelSpeedX = runner->speed.x * gameState->pixelsPerMt;
-  int pixelSpeedY = runner->speed.y * gameState->pixelsPerMt;
+  int pixelSpeedX = (int) (runner->speed.x * gameState->pixelsPerMt);
+  int pixelSpeedY = (int) (runner->speed.y * gameState->pixelsPerMt);
 
   if (pixelSpeedX > 1 || pixelSpeedX < -1 || pixelSpeedY > 1 || pixelSpeedY < -1) {
     runner->bitmapIndex = (runner->bitmapIndex < 8 * framesPerBitmap - 1) 
@@ -315,15 +315,15 @@ gameUpdateAndRender(game_memory* memory, game_input *input, game_screen_buffer *
     }
   }
 
-  drawRectangle(buffer, 0, 0, buffer->width, buffer->height, 0, 0, 0);
+  drawRectangle(buffer, 0.f, 0.f, (real32) buffer->width, (real32) buffer->height, 0.f, 0.f, 0.f);
 
   drawRectangle(buffer, 0, 0, 10, 10, 0, 0, 1);
-  drawRectangle(buffer, buffer->width - 10, 0, buffer->width, 10, 1, 0, 0);
-  drawRectangle(buffer, buffer->width - 10, buffer->height - 10, buffer->width, buffer->height, 0, 1, 0);
-  drawRectangle(buffer, 0, buffer->height - 10, 10, buffer->height, 1, 1, 0);
+  drawRectangle(buffer, (real32) buffer->width - 10.f, 0.f, (real32) buffer->width, 10, 1.f, 0.f, 0.f);
+  drawRectangle(buffer, (real32) buffer->width - 10.f, (real32) buffer->height - 10, (real32) buffer->width, (real32) buffer->height, 0, 1, 0);
+  drawRectangle(buffer, 0.f, buffer->height - 10.f, 10.f, (real32) buffer->height, 1.f, 1.f, 0.f);
 
-  int x = gameState->runnerState.position.x * gameState->pixelsPerMt;
-  int y = gameState->runnerState.position.y * gameState->pixelsPerMt;
+  int x = (int) (gameState->runnerState.position.x * gameState->pixelsPerMt);
+  int y = (int) (gameState->runnerState.position.y * gameState->pixelsPerMt);
 
-  drawBitmap(buffer, gameState->runnerState.bitmap, x, y, 0, .8, 1);
+  drawBitmap(buffer, gameState->runnerState.bitmap, (real32) x, (real32) y, 0.f, .8f, 1.f);
 }

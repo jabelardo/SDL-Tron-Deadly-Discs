@@ -30,9 +30,14 @@ typedef double real64;
 #include <stdio.h>
 #include <sys/stat.h> 
 #include <fcntl.h>
+
+#if _MSC_VER
+#include <windows.h>
+#else
 #include <unistd.h>
 #include <sys/mman.h>
 #include <x86intrin.h>
+#endif
 
 #include "sdl_tron.h"
 
@@ -51,7 +56,11 @@ global_variable game_screen_buffer G_backbuffer;
 internal void
 debugSdlPlatformFreeFileMemory(debug_read_file_result* memory) {
   if (memory && memory->contents && memory->contentsSize) {
+#if _MSC_VER
+    VirtualFree(memory->contents, 0, MEM_RELEASE);
+#else
     munmap(memory->contents, memory->contentsSize);
+#endif
     memory->contents = 0;
     memory->contentsSize = 0;
   }
@@ -60,7 +69,7 @@ debugSdlPlatformFreeFileMemory(debug_read_file_result* memory) {
 internal debug_read_file_result 
 debugSdlPlatformReadEntireFile(char *filename) {
   debug_read_file_result result = {};
-  
+  #if 0
   int fileHandle = open(filename, O_RDONLY);
   if (fileHandle == -1) {
     return result;
@@ -103,13 +112,18 @@ debugSdlPlatformReadEntireFile(char *filename) {
   }
 
   close(fileHandle);
+  #endif
   return(result);
 }
 
 internal void
 sdlPlatformFreeBmp(bitmap_buffer* memory) {
   if (memory && memory->pixels && memory->memorySize) {
+#if _MSC_VER
+    VirtualFree(memory->pixels, 0, MEM_RELEASE);
+#else
     munmap(memory->pixels, memory->memorySize);
+#endif
     memory->pixels = 0;
     memory->memorySize = 0;
   }
@@ -143,12 +157,17 @@ sdlPlatformLoadBmp(char *filename) {
     result.height = surface->h;
     result.pitch = surface->pitch;
 
+#if _MSC_VER
+    result.pixels = (uint32 *) VirtualAlloc(0, result.memorySize, 
+                                            MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+#else
     result.pixels = (uint32 *) mmap(0,
                                     result.memorySize,
                                     PROT_READ | PROT_WRITE,
                                     MAP_PRIVATE | MAP_ANONYMOUS,
                                     -1,
                                     0);
+#endif
 
     memcpy(result.pixels, surface->pixels, result.memorySize);
 
@@ -199,19 +218,28 @@ internal void
 sdlResizeScreenBuffer(game_screen_buffer *buffer, int width, int height) {
 
   if (buffer->memory) {
-        munmap(buffer->memory,
-               buffer->width * buffer->height * BITES_PER_PIXEL);
+#if _MSC_VER
+    VirtualFree(buffer->memory, 0, MEM_RELEASE);
+#else
+    munmap(buffer->memory,
+          buffer->width * buffer->height * BITES_PER_PIXEL);
+#endif
   }
   buffer->width = width;
   buffer->height = height;
   buffer->pitch = width * BITES_PER_PIXEL;
   buffer->bytesPerPixel = BITES_PER_PIXEL;
+#if _MSC_VER
+  buffer->memory = (uint32 *) VirtualAlloc(0, width * height * BITES_PER_PIXEL, 
+                                            MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+#else
   buffer->memory = mmap(0,
                         width * height * BITES_PER_PIXEL,
                         PROT_READ | PROT_WRITE,
                         MAP_PRIVATE | MAP_ANONYMOUS,
                         -1,
                         0);
+#endif
 }
 
 internal void 
@@ -352,7 +380,7 @@ main(int argc, char *argv[]) {
   if (window) {
 
     int monitorRefreshHz = sdlGetWindowRefreshRate(window);
-    int gameUpdateHz = (monitorRefreshHz / 2.0f);
+    int gameUpdateHz = (int) (monitorRefreshHz / 2.0f);
     printf("Refresh rate is %d Hz\n", gameUpdateHz);
     real32 targetSecondsPerFrame = 1.0f / (real32) gameUpdateHz;
 
@@ -387,10 +415,15 @@ main(int argc, char *argv[]) {
         sdlState.totalSize = gameMemory.permanentStorage.size 
                            + gameMemory.transientStorage.size;
 
+#if _MSC_VER
+        sdlState.gameMemoryBlock = VirtualAlloc(0, sdlState.totalSize, 
+                                                MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
+#else
         sdlState.gameMemoryBlock = mmap(0, sdlState.totalSize,
                                         PROT_READ | PROT_WRITE,
                                         MAP_ANON | MAP_PRIVATE,
                                         -1, 0);
+#endif
 
         gameMemory.permanentStorage.base = (uint8*) sdlState.gameMemoryBlock;
         gameMemory.transientStorage.base = (uint8*) (gameMemory.permanentStorage.base) 
@@ -403,7 +436,7 @@ main(int argc, char *argv[]) {
           game_input *oldInput = &input[1];
 
           uint64 lastCounter = SDL_GetPerformanceCounter();
-          uint64 lastCycleCount = _rdtsc();
+          // uint64 lastCycleCount = _rdtsc();
 
           while (running) {
 
@@ -446,7 +479,7 @@ main(int argc, char *argv[]) {
 
             real32 secondsElapsedForFrame = sdlGetSecondsElapsed(lastCounter, SDL_GetPerformanceCounter());
             if (secondsElapsedForFrame < targetSecondsPerFrame) {
-                int32 timeToSleep = ((targetSecondsPerFrame - secondsElapsedForFrame) * 1000) - 1;
+                int32 timeToSleep = (int32) ((targetSecondsPerFrame - secondsElapsedForFrame) * 1000) - 1;
                 if (timeToSleep > 0) {
                   //printf("timeToSleep %d\n", timeToSleep);
                   SDL_Delay(timeToSleep);
@@ -457,7 +490,6 @@ main(int argc, char *argv[]) {
             } else {
               printf("MISSED FRAME RATE!\n");
             }
-
 
             uint64 endCounter = SDL_GetPerformanceCounter();
 #if 0

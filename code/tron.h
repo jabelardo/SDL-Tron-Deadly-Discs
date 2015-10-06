@@ -16,7 +16,7 @@
 */
 
 #if HANDMADE_SLOW
-#define ASSERT(expression) do { if (!(expression)) { *(volatile int *) 0 = 0; } } while(0)
+#define ASSERT(expression) if (!(expression)) { *(volatile int *) 0 = 0; }
 #else
 #define ASSERT(expression)
 #endif
@@ -24,7 +24,7 @@
 #define KILOBYTES(value) ((value) * 1024LL)
 #define MEGABYTES(value) (KILOBYTES(value) * 1024LL)
 #define GIGABYTES(value) (MEGABYTES(value) * 1024LL)
-#define TERABYTES(value) (TERABYTES(value) * 1024LL)
+#define TERABYTES(value) (GIGABYTES(value) * 1024LL)
 
 #define ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
 
@@ -132,7 +132,7 @@ inline bool operator!=(v2 a, v2 b) {
 }
 
 inline real32 signReal32(real32 x) {
-  return (x > 0.f) - (x < 0.f);
+  return  (real32) (x > 0.f) - (real32) (x < 0.f);
 }
 
 inline real32 squareLen(v2 a) {
