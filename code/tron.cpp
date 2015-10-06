@@ -184,17 +184,19 @@ gameUpdateAndRender(game_memory* memory, game_input *input, game_screen_buffer *
     copyBmp(&memory->permanentStorage, &runnerBitmaps->right[7], &runningManBmp, 240, 2, 28, 37);
     copyBmp(&memory->permanentStorage, &runnerBitmaps->left [7], &runningManBmp, 240, 2, 28, 37, true);
     memory->platformFreeBmp(&runningManBmp);
+
+    gameState->pixelsPerMt = 20.0f;
+
     gameState->runnerState.bitmap = &runnerBitmaps->down[0];
     gameState->runnerState.direction = DIRECTION_DOWN;
 
     gameState->runnerState.position.x = 0;
     gameState->runnerState.position.y = 0;
 
-    gameState->maxAccel = 9.0f;
-    gameState->maxSpeed = 12.0f;
-    gameState->pixelsPerMt = 20.0f;
-    gameState->dAccel = .1f;
-    gameState->dDeaccel = 4.f;
+    gameState->runnerState.maxAccel = 9.0f;
+    gameState->runnerState.maxSpeed = 12.0f;
+    gameState->runnerState.deltaAccel = 1.f;
+    gameState->runnerState.deltaDrag = 4.f;
 
     memory->isInitialized = true;
   }
@@ -203,23 +205,22 @@ gameUpdateAndRender(game_memory* memory, game_input *input, game_screen_buffer *
   
   runner_state *runner = &gameState->runnerState;
 
-  real32 dAccel = gameState->maxAccel * gameState->dAccel;
   if (input0->actionDown.endedDown) {
     runner->direction = DIRECTION_DOWN;
-    runner->accel.y -= dAccel;
+    runner->accel.y -= runner->deltaAccel;
   }
   if (input0->actionUp.endedDown) {
     runner->direction = DIRECTION_UP;
-    runner->accel.y += dAccel;
+    runner->accel.y += runner->deltaAccel;
   }
   if (!input0->actionDown.endedDown && !input0->actionUp.endedDown) {
     if (runner->accel.y > 0) {
-      runner->accel.y -= gameState->dDeaccel * dAccel;
+      runner->accel.y -= runner->deltaDrag * runner->deltaAccel;
       if (runner->accel.y < 0) {
         runner->accel.y = 0;
       }
     } else if (runner->accel.y < 0) {
-      runner->accel.y += gameState->dDeaccel * dAccel;
+      runner->accel.y += runner->deltaDrag * runner->deltaAccel;
       if (runner->accel.y > 0) {
         runner->accel.y = 0;
       }
@@ -227,28 +228,28 @@ gameUpdateAndRender(game_memory* memory, game_input *input, game_screen_buffer *
   }
   if (input0->actionLeft.endedDown) {
     runner->direction = DIRECTION_LEFT;
-    runner->accel.x -= dAccel;
+    runner->accel.x -= runner->deltaAccel;
   }
   if (input0->actionRight.endedDown) {
     runner->direction = DIRECTION_RIGHT;
-    runner->accel.x += dAccel;
+    runner->accel.x += runner->deltaAccel;
   }
   if (!input0->actionLeft.endedDown && !input0->actionRight.endedDown) {
     if (runner->accel.x > 0) {
-      runner->accel.x -= gameState->dDeaccel * dAccel;
+      runner->accel.x -= runner->deltaDrag * runner->deltaAccel;
       if (runner->accel.x < 0) {
         runner->accel.x = 0;
       }
     } else if (runner->accel.x < 0) {
-      runner->accel.x += gameState->dDeaccel * dAccel;
+      runner->accel.x += runner->deltaDrag * runner->deltaAccel;
       if (runner->accel.x > 0) {
         runner->accel.x = 0;
       }
     }
   }
   real32 squareLenAccel = squareLen(runner->accel);
-  if (squareLenAccel > square(gameState->maxAccel)) {
-    real32 ratio = gameState->maxAccel / sqrtf(squareLenAccel);
+  if (squareLenAccel > square(runner->maxAccel)) {
+    real32 ratio = runner->maxAccel / sqrtf(squareLenAccel);
     runner->accel.x *= ratio;
     runner->accel.y *= ratio;
   }
@@ -256,8 +257,8 @@ gameUpdateAndRender(game_memory* memory, game_input *input, game_screen_buffer *
   runner->speed += runner->accel - (.2f * runner->speed);
 
   real32 squareLenSpped = squareLen(runner->speed);
-  if (squareLenSpped > square(gameState->maxSpeed)) {
-    real32 ratio = gameState->maxSpeed / sqrtf(squareLenSpped);
+  if (squareLenSpped > square(runner->maxSpeed)) {
+    real32 ratio = runner->maxSpeed / sqrtf(squareLenSpped);
     runner->speed.x *= ratio;
     runner->speed.y *= ratio;
   }

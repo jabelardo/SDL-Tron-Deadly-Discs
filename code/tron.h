@@ -188,16 +188,16 @@ struct runner_state {
   v2 position;
   v2 speed;
   v2 accel;
+  real32 deltaDrag;
+  real32 deltaAccel;
+  real32 maxAccel;
+  real32 maxSpeed;
   int bitmapIndex;
   bitmap_buffer* bitmap;
   directions direction;
 };
 
 struct game_state { 
-  real32 dDeaccel;
-  real32 dAccel;
-  real32 maxAccel;
-  real32 maxSpeed;
   real32 pixelsPerMt;
   runner_bitmaps runnerBitmaps;
   runner_state runnerState;
