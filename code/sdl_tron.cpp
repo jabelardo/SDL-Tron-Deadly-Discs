@@ -27,7 +27,6 @@ typedef double real64;
 #include "tron.cpp"
 
 #include <SDL.h>
-#include <stdio.h>
 #include <sys/stat.h> 
 #include <fcntl.h>
 
@@ -51,26 +50,88 @@ typedef double real64;
 
 global_variable game_screen_buffer G_backbuffer;
 
+global_variable char G_dataPath[FILENAME_MAX];
+
 #define BITES_PER_PIXEL 4
 
-internal void
-debugSdlPlatformFreeFileMemory(debug_read_file_result* memory) {
-  if (memory && memory->contents && memory->contentsSize) {
-#if _MSC_VER
-    VirtualFree(memory->contents, 0, MEM_RELEASE);
-#else
-    munmap(memory->contents, memory->contentsSize);
-#endif
-    memory->contents = 0;
-    memory->contentsSize = 0;
-  }
+internal void* 
+sdlPlatformAlloc(memory_partition* partition, size_t size) {
+  ASSERT(partition && partition->base && partition->size);
+  ASSERT(size);
+  ASSERT(size <= partition->size - partition->used);
+
+  uint8* result = partition->base + partition->used;
+  partition->used += size;
+
+  return result;
 }
 
-internal debug_read_file_result 
-debugSdlPlatformReadEntireFile(char *filename) {
-  debug_read_file_result result = {};
-  #if 0
-  int fileHandle = open(filename, O_RDONLY);
+internal void
+sdlPlatformFree(memory_partition* partition, void* base, size_t size) {
+  // ASSERT(partition && partition->base && partition->size && partition->used);
+  // ASSERT(base && size);
+  // ASSERT(partition->base <= (uint8*) base - size);
+  // ASSERT(partition->used >= size);
+  // partition->used -= size;
+}
+
+internal mem_buffer 
+sdlPlatformReadEntireFile(memory_partition* partition, char *filename) {
+  
+  ASSERT(strlen(G_dataPath) + strlen(filename) < FILENAME_MAX);
+  char filepath[FILENAME_MAX];
+  filepath[FILENAME_MAX - 1] = 0;
+  strcpy(filepath, G_dataPath);
+  strcat(filepath, filename);
+
+  mem_buffer result = {};
+
+#if _MSC_VER
+  
+  HANDLE fileHandle = CreateFileA(filepath, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+  
+  if (fileHandle != INVALID_HANDLE_VALUE) {
+
+    LARGE_INTEGER fileSize;
+
+    if (GetFileSizeEx(fileHandle, &fileSize)) {
+
+      uint32 fileSize32 = safeTruncateUInt64(fileSize.QuadPart);
+
+      result.base = (uint8 *) sdlAlloc(partition, fileSize32);
+
+      if (result.base) {
+
+        DWORD bytesRead;
+        if (ReadFile(fileHandle, result.base, fileSize32, &bytesRead, 0) && 
+            (fileSize32 == bytesRead)) {
+
+          // NOTE(casey): File read successfully
+          result.size = fileSize32;
+
+        } else {                    
+          // TODO(casey): Logging
+          sdlPlatformFree(partition, result.base, result.size);
+          result.base = 0;
+          result.size = 0;
+        }
+
+      } else {
+          // TODO(casey): Logging
+      }
+
+    } else {
+      // TODO(casey): Logging
+    }
+
+    CloseHandle(fileHandle);
+
+  } else {
+      // TODO(casey): Logging
+  }
+
+#else
+  int fileHandle = open(filepath, O_RDONLY);
   if (fileHandle == -1) {
     return result;
   }
@@ -80,30 +141,24 @@ debugSdlPlatformReadEntireFile(char *filename) {
     close(fileHandle);
     return result;
   }
-  result.contentsSize = fileStatus.st_size;
+  result.size = fileStatus.st_size;
 
-  result.contents = mmap(0,
-                         result.contentsSize,
-                         PROT_READ | PROT_WRITE,
-                         MAP_PRIVATE | MAP_ANONYMOUS,
-                         -1,
-                         0);
+  result.base = (uint8 *) sdlPlatformAlloc(partition, result.size);
 
-  if (!result.contents) {
+  if (!result.base) {
     close(fileHandle);
-    result.contentsSize = 0;
+    result.size = 0;
     return result;
   }
 
-  uint32 bytesToRead = result.contentsSize;
-  uint8 *nextByteLocation = (uint8 *) result.contents;
+  uint32 bytesToRead = result.size;
+  uint8 *nextByteLocation = (uint8 *) result.base;
   while (bytesToRead) {
     ssize_t bytesRead = read(fileHandle, nextByteLocation, bytesToRead);
-    if (bytesRead == -1)
-    {
-        munmap(result.contents, result.contentsSize);
-        result.contents = 0;
-        result.contentsSize = 0;
+    if (bytesRead == -1) {
+        sdlPlatformFree(partition, result.base, result.size);
+        result.base = 0;
+        result.size = 0;
         close(fileHandle);
         return result;
     }
@@ -113,74 +168,27 @@ debugSdlPlatformReadEntireFile(char *filename) {
 
   close(fileHandle);
   #endif
+
   return(result);
 }
 
 internal void
-sdlPlatformFreeBmp(bitmap_buffer* memory) {
-  if (memory && memory->pixels && memory->memorySize) {
-#if _MSC_VER
-    VirtualFree(memory->pixels, 0, MEM_RELEASE);
-#else
-    munmap(memory->pixels, memory->memorySize);
-#endif
-    memory->pixels = 0;
-    memory->memorySize = 0;
-  }
-}
-
-internal bitmap_buffer 
-sdlPlatformLoadBmp(char *filename) {
-  bitmap_buffer result = {};
+sdlInitDataPath() {
   char *basepath = SDL_GetBasePath();
   printf("base_path %s\n", basepath);
 
   char* datapath = "../data/";
 
-  char filePath[FILENAME_MAX];
-
   size_t basepathLen = strlen(basepath);
   size_t datapathLen = strlen(datapath);
-  size_t filenameLen = strlen(filename);
 
-  ASSERT(basepathLen + datapathLen + filenameLen + 1 <= FILENAME_MAX);
+  ASSERT(basepathLen + datapathLen + 1 <= FILENAME_MAX);
 
-  memcpy(filePath, basepath, basepathLen);
-  memcpy(filePath + basepathLen, datapath, datapathLen);
-  memcpy(filePath + basepathLen + datapathLen, filename, filenameLen);
-  filePath[basepathLen + datapathLen + filenameLen] = 0;
+  memcpy(G_dataPath, basepath, basepathLen);
+  memcpy(G_dataPath + basepathLen, datapath, datapathLen);
+  G_dataPath[basepathLen + datapathLen] = 0;
 
-  SDL_Surface* surface = SDL_LoadBMP(filePath);
-  if (surface) {
-    result.memorySize = surface->pitch * surface->h * sizeof(uint32);
-    result.width = surface->w;
-    result.height = surface->h;
-    result.pitch = surface->pitch;
-
-#if _MSC_VER
-    result.pixels = (uint32 *) VirtualAlloc(0, result.memorySize, 
-                                            MEM_RESERVE|MEM_COMMIT, PAGE_READWRITE);
-#else
-    result.pixels = (uint32 *) mmap(0,
-                                    result.memorySize,
-                                    PROT_READ | PROT_WRITE,
-                                    MAP_PRIVATE | MAP_ANONYMOUS,
-                                    -1,
-                                    0);
-#endif
-
-    memcpy(result.pixels, surface->pixels, result.memorySize);
-
-    printf("loaded %s\n", filePath);
-    printf("memorySize %d width %d height %d pitch %d\n", result.memorySize,
-      result.width, result.height, result.pitch);
-
-    SDL_FreeSurface(surface);
-  } else {
-    printf("can't load %s\n", filePath);
-  }
   SDL_free(basepath);
-  return result;
 }
 
 internal SDL_Surface * 
@@ -372,6 +380,8 @@ main(int argc, char *argv[]) {
 
   sdl_state sdlState = {};
 
+  sdlInitDataPath();
+
   uint64 perfCountFrequency = SDL_GetPerformanceFrequency();
 
   SDL_Window *window = SDL_CreateWindow("Tron", SDL_WINDOWPOS_UNDEFINED,
@@ -408,9 +418,10 @@ main(int argc, char *argv[]) {
 #endif
         game_memory gameMemory = {};
         gameMemory.permanentStorage.size = MEGABYTES(64);
-        gameMemory.transientStorage.size = GIGABYTES(1);
-        gameMemory.platformLoadBmp = sdlPlatformLoadBmp;
-        gameMemory.platformFreeBmp = sdlPlatformFreeBmp;
+        gameMemory.transientStorage.size = MEGABYTES(64);
+        gameMemory.platformFunctions.readEntireFile = sdlPlatformReadEntireFile;
+        gameMemory.platformFunctions.free = sdlPlatformFree;
+        gameMemory.platformFunctions.alloc = sdlPlatformAlloc;
 
         sdlState.totalSize = gameMemory.permanentStorage.size 
                            + gameMemory.transientStorage.size;

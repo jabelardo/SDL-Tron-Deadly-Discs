@@ -11,6 +11,87 @@ getController(game_input *input, unsigned int controllerIndex) {
   return(result);
 }
 
+#pragma pack(push, 1)
+struct bitmap_header {
+  uint16 fileType;
+  uint32 fileSize;
+  uint16 reserved1;
+  uint16 reserved2;
+  uint32 bitmapOffset;
+  uint32 size;
+  int32 width;
+  int32 height;
+  uint16 planes;
+  uint16 bitsPerPixel;
+  uint32 compression;
+  uint32 sizeOfBitmap;
+  int32 horzResolution;
+  int32 vertResolution;
+  uint32 colorsUsed;
+  uint32 colorsImportant;
+  uint32 redMask;
+  uint32 greenMask;
+  uint32 blueMask;
+};
+#pragma pack(pop)
+
+internal bitmap_buffer
+loadBmp(memory_partition* partition, platform_functions functions, char *filename) {
+
+  bitmap_buffer result;
+
+  mem_buffer readResult = functions.readEntireFile(partition, filename);    
+
+  if (readResult.size != 0) {
+
+    bitmap_header *header = (bitmap_header *) readResult.base;
+    result.pixels = (uint32 *) ((uint8 *) readResult.base + header->bitmapOffset);
+    result.width = header->width;
+    result.height = header->height;
+
+    ASSERT(header->compression == 3);
+
+    // NOTE(casey): If you are using this generically for some reason,
+    // please remember that BMP files CAN GO IN EITHER DIRECTION and
+    // the height will be negative for top-down.
+    // (Also, there can be compression, etc., etc... DON'T think this
+    // is complete BMP loading code because it isn't!!)
+
+    // NOTE(casey): Byte order in memory is determined by the Header itself,
+    // so we have to read out the masks and convert the pixels ourselves.
+    uint32 redMask = header->redMask;
+    uint32 greenMask = header->greenMask;
+    uint32 blueMask = header->blueMask;
+    uint32 alphaMask = ~(redMask | greenMask | blueMask);        
+    
+    bit_scan_result redShift = leastSignificantSetBit(redMask);
+    bit_scan_result greenShift = leastSignificantSetBit(greenMask);
+    bit_scan_result blueShift = leastSignificantSetBit(blueMask);
+    bit_scan_result alphaShift = leastSignificantSetBit(alphaMask);
+
+    ASSERT(redShift.found);
+    ASSERT(greenShift.found);
+    ASSERT(blueShift.found);
+    ASSERT(alphaShift.found);
+    
+    uint32 *sourceDest = result.pixels;
+
+    for (int32 y = 0; y < header->height; ++y) {
+
+      for(int32 x = 0; x < header->width; ++x) {
+
+        uint32 c = *sourceDest;
+        *sourceDest++ = ((((c >> alphaShift.index) & 0xff) << 24) |
+                         (((c >> redShift.index) & 0xff) << 16) |
+                         (((c >> greenShift.index) & 0xff) << 8) |
+                         (((c >> blueShift.index) & 0xff) << 0));
+      }
+    }
+  }
+
+  return result;
+}
+
 internal void
 copyBmp(memory_partition* memory, bitmap_buffer* dest, bitmap_buffer* src, 
         int32 srcX, int32 srcY, int32 width, int32 height, bool hflip = false) {
@@ -79,7 +160,6 @@ drawRectangle(game_screen_buffer *buffer,
 }
 internal void
 drawBitmap(game_screen_buffer *buffer, bitmap_buffer *bitmap, real32 realX, real32 realY,
-           real32 filterR = 1, real32 filterG = 1, real32 filterB = 1, 
            int32 alignX = 0, int32 alignY = 0) {
 
     realX -= (real32) alignX;
@@ -119,23 +199,21 @@ drawBitmap(game_screen_buffer *buffer, bitmap_buffer *bitmap, real32 realX, real
         uint32 *dest = (uint32 *) destRow;
         uint32 *source = sourceRow;
         for (int x = minX; x < maxX; ++x) { 
-          real32 SR = (real32)((*source >> 24) & 0xFF) / 255.f;
-          real32 SG = (real32)((*source >> 16) & 0xFF) / 255.f;
-          real32 SB = (real32)((*source >> 8) & 0xFF) / 255.f;
-          real32 A = 1.0f - (real32)((*source >> 0) & 0xFF) / 255.f;
 
-          // real32 A = (real32)((*source >> 24) & 0xFF) / 255.f;
-          // real32 SR = (real32)((*source >> 16) & 0xFF) / 255.f;
-          // real32 SG = (real32)((*source >> 8) & 0xFF) / 255.f;
-          // real32 SB = (real32)((*source >> 0) & 0xFF) / 255.f;
+          real32 SA = (real32)((*source >> 24) & 0xFF) / 255.0f;
+          real32 SR = (real32)((*source >> 16) & 0xFF);
+          real32 SG = (real32)((*source >> 8) & 0xFF);
+          real32 SB = (real32)((*source >> 0) & 0xFF);
 
-          real32 DR = (real32)((*dest >> 16) & 0xFF) / 255.f;
-          real32 DG = (real32)((*dest >> 8) & 0xFF) / 255.f;
-          real32 DB = (real32)((*dest >> 0) & 0xFF) / 255.f;
+          real32 DR = (real32)((*dest >> 16) & 0xFF);
+          real32 DG = (real32)((*dest >> 8) & 0xFF);
+          real32 DB = (real32)((*dest >> 0) & 0xFF);
 
-          real32 R = ((1.0f - A) * DR + A * SR) * filterR;
-          real32 G = ((1.0f - A) * DG + A * SG) * filterG;
-          real32 B = ((1.0f - A) * DB + A * SB) * filterB;
+          // TODO(casey): Someday, we need to talk about premultiplied alpha!
+          // (this is not premultiplied alpha)
+          real32 R = (1.0f - SA) * DR + SA * SR;
+          real32 G = (1.0f - SA) * DG + SA * SG;
+          real32 B = (1.0f - SA) * DB + SA * SB;
 
           *dest = (((uint32)(R * 255) << 16) |
                    ((uint32)(G * 255) << 8) |
@@ -157,7 +235,7 @@ gameUpdateAndRender(game_memory* memory, game_input *input, game_screen_buffer *
 
   if (!memory->isInitialized) {
     memory->permanentStorage.used = sizeof(game_state);
-    bitmap_buffer runningManBmp = memory->platformLoadBmp("running_man.bmp");
+    bitmap_buffer runningManBmp = loadBmp(&memory->transientStorage, memory->platformFunctions, "running_man.bmp");
     runner_bitmaps* runnerBitmaps = &gameState->runnerBitmaps;
     copyBmp(&memory->permanentStorage, &runnerBitmaps->down[0], &runningManBmp, 209, 78, 28, 37);
     copyBmp(&memory->permanentStorage, &runnerBitmaps->down[1], &runningManBmp, 242, 78, 28, 37);
@@ -183,27 +261,33 @@ gameUpdateAndRender(game_memory* memory, game_input *input, game_screen_buffer *
     copyBmp(&memory->permanentStorage, &runnerBitmaps->left [6], &runningManBmp, 208, 2, 28, 37, true);
     copyBmp(&memory->permanentStorage, &runnerBitmaps->right[7], &runningManBmp, 240, 2, 28, 37);
     copyBmp(&memory->permanentStorage, &runnerBitmaps->left [7], &runningManBmp, 240, 2, 28, 37, true);
-    memory->platformFreeBmp(&runningManBmp);
+    memory->platformFunctions.free(&memory->transientStorage, runningManBmp.pixels, runningManBmp.memorySize);
 
     gameState->pixelsPerMt = 20.0f;
+    gameState->runnersCount = 2;
 
-    gameState->runnerState.bitmap = &runnerBitmaps->down[0];
-    gameState->runnerState.direction = DIRECTION_DOWN;
+    gameState->runners[0].bitmap = &runnerBitmaps->down[0];
+    gameState->runners[0].direction = DIRECTION_DOWN;
 
-    gameState->runnerState.position.x = 0;
-    gameState->runnerState.position.y = 0;
+    gameState->runners[0].maxAccel = 9.0f;
+    gameState->runners[0].maxSpeed = 12.0f;
+    gameState->runners[0].deltaAccel = 1.f;
+    gameState->runners[0].deltaDrag = 4.f;
 
-    gameState->runnerState.maxAccel = 9.0f;
-    gameState->runnerState.maxSpeed = 12.0f;
-    gameState->runnerState.deltaAccel = 1.f;
-    gameState->runnerState.deltaDrag = 4.f;
+    gameState->runners[1] = gameState->runners[0];
+
+    gameState->runners[0].position.x = 0;
+    gameState->runners[0].position.y = 0;
+
+    gameState->runners[1].position.x = (buffer->width - 28) / 2;
+    gameState->runners[1].position.y = (buffer->height - 37) / 2;
 
     memory->isInitialized = true;
   }
 
   game_controller_input *input0 = &input->controllers[0];    
   
-  runner_state *runner = &gameState->runnerState;
+  runner_state *runner = &gameState->runners[0];
 
   if (input0->actionDown.endedDown) {
     runner->direction = DIRECTION_DOWN;
@@ -323,8 +407,13 @@ gameUpdateAndRender(game_memory* memory, game_input *input, game_screen_buffer *
   drawRectangle(buffer, (real32) buffer->width - 10.f, (real32) buffer->height - 10, (real32) buffer->width, (real32) buffer->height, 0, 1, 0);
   drawRectangle(buffer, 0.f, buffer->height - 10.f, 10.f, (real32) buffer->height, 1.f, 1.f, 0.f);
 
-  int x = (int) (gameState->runnerState.position.x * gameState->pixelsPerMt);
-  int y = (int) (gameState->runnerState.position.y * gameState->pixelsPerMt);
+  int x0 = (int) (gameState->runners[0].position.x * gameState->pixelsPerMt);
+  int y0 = (int) (gameState->runners[0].position.y * gameState->pixelsPerMt);
 
-  drawBitmap(buffer, gameState->runnerState.bitmap, (real32) x, (real32) y, 0.f, .8f, 1.f);
+  int x1 = (int) (gameState->runners[1].position.x);
+  int y1 = (int) (gameState->runners[1].position.y);
+
+  drawBitmap(buffer, gameState->runners[0].bitmap, (real32) x0, (real32) y0);
+
+  drawBitmap(buffer, gameState->runners[1].bitmap, (real32) x1, (real32) y1);
 }

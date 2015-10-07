@@ -15,7 +15,7 @@
     1 - Slow code welcome.
 */
 
-#if HANDMADE_SLOW
+#if TRON_SLOW
 #define ASSERT(expression) if (!(expression)) { *(volatile int *) 0 = 0; }
 #else
 #define ASSERT(expression)
@@ -48,10 +48,6 @@ struct bitmap_buffer {
   int height;
   int pitch;
 };
-
-typedef bitmap_buffer (platform_load_bmp) (char *filename);
-
-typedef void (platform_free_bmp) (bitmap_buffer* bitmap);
 
 struct game_button_state {
 	int halfTransitionCount;
@@ -95,10 +91,28 @@ struct game_input {
   game_controller_input controllers[4];
 };
 
+// TODO: this is a stack for the moment, could change in the future.
 struct memory_partition {
   size_t size;
   uint8 *base;
   size_t used;
+};
+
+struct mem_buffer {
+  size_t size;
+  uint8 *base;
+};
+
+typedef mem_buffer (platform_read_entire_file) (memory_partition* partition, char *filename);
+
+typedef void (platform_free) (memory_partition* partition, void* base, size_t size);
+
+typedef void*  (platform_alloc) (memory_partition* partition, size_t size);
+
+struct platform_functions {
+  platform_read_entire_file* readEntireFile;
+  platform_free* free;
+  platform_alloc* alloc;
 };
 
 struct game_memory {
@@ -107,8 +121,7 @@ struct game_memory {
   memory_partition permanentStorage;
   memory_partition transientStorage;
 
-  platform_load_bmp* platformLoadBmp;
-  platform_free_bmp* platformFreeBmp;
+  platform_functions platformFunctions;
 };
 
 struct runner_bitmaps {
@@ -200,7 +213,36 @@ struct runner_state {
 struct game_state { 
   real32 pixelsPerMt;
   runner_bitmaps runnerBitmaps;
-  runner_state runnerState;
+  int runnersCount;
+  runner_state runners[2];
 };
+
+struct bit_scan_result {
+  bool32 found;
+  uint32 index;
+};
+
+inline bit_scan_result
+leastSignificantSetBit(uint32 value) {
+
+  bit_scan_result result = {};
+
+#if _MSC_VER
+    result.found = _BitScanForward((unsigned long *) &result.index, value);
+#else
+
+  for (uint32 test = 0; test < 32; ++test) {
+
+    if (value & (1 << test)) {
+      result.index = test;
+      result.found = true;
+      break;
+    }
+  }
+#endif  
+
+  return result;
+}
+
 
 #endif /* TRON_H */
