@@ -3,6 +3,10 @@
 
 #include <stddef.h>
 
+#if _MSC_VER
+#include <intrin.h>
+#endif
+
 /*
   NOTE:
 
@@ -28,10 +32,13 @@
 
 #define ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
 
-struct debug_read_file_result {
-  uint32 contentsSize;
-  void *contents;
-};
+inline uint32
+safeTruncateUInt64(uint64 value) {
+  // TODO(casey): Defines for maximum values
+  ASSERT(value <= 0xFFFFFFFF);
+  uint32 result = (uint32) value;
+  return result;
+}
 
 struct game_screen_buffer {
 	void *memory;
@@ -42,7 +49,8 @@ struct game_screen_buffer {
 };
 
 struct bitmap_buffer { 
-  uint32 memorySize;
+  void *memory;
+  size_t memorySize;
   uint32 *pixels;
   int width;
   int height;
@@ -94,13 +102,13 @@ struct game_input {
 // TODO: this is a stack for the moment, could change in the future.
 struct memory_partition {
   size_t size;
-  uint8 *base;
+  void *base;
   size_t used;
 };
 
 struct mem_buffer {
   size_t size;
-  uint8 *base;
+  void *base;
 };
 
 typedef mem_buffer (platform_read_entire_file) (memory_partition* partition, char *filename);

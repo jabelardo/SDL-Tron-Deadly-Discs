@@ -60,7 +60,7 @@ sdlPlatformAlloc(memory_partition* partition, size_t size) {
   ASSERT(size);
   ASSERT(size <= partition->size - partition->used);
 
-  uint8* result = partition->base + partition->used;
+  uint8* result = (uint8*) partition->base + partition->used;
   partition->used += size;
 
   return result;
@@ -68,11 +68,11 @@ sdlPlatformAlloc(memory_partition* partition, size_t size) {
 
 internal void
 sdlPlatformFree(memory_partition* partition, void* base, size_t size) {
-  // ASSERT(partition && partition->base && partition->size && partition->used);
-  // ASSERT(base && size);
-  // ASSERT(partition->base <= (uint8*) base - size);
-  // ASSERT(partition->used >= size);
-  // partition->used -= size;
+  ASSERT(partition && partition->base && partition->size && partition->used);
+  ASSERT(base && size);
+  ASSERT(partition->base <= (uint8*) base);
+  ASSERT((uint8*) partition->base + partition->used >= (uint8*) base + size);
+  partition->used -= size;
 }
 
 internal mem_buffer 
@@ -81,12 +81,13 @@ sdlPlatformReadEntireFile(memory_partition* partition, char *filename) {
   ASSERT(strlen(G_dataPath) + strlen(filename) < FILENAME_MAX);
   char filepath[FILENAME_MAX];
   filepath[FILENAME_MAX - 1] = 0;
-  strcpy(filepath, G_dataPath);
-  strcat(filepath, filename);
 
   mem_buffer result = {};
 
 #if _MSC_VER
+
+  strcpy_s(filepath, G_dataPath);
+  strcat_s(filepath, filename);
   
   HANDLE fileHandle = CreateFileA(filepath, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
   
@@ -98,7 +99,7 @@ sdlPlatformReadEntireFile(memory_partition* partition, char *filename) {
 
       uint32 fileSize32 = safeTruncateUInt64(fileSize.QuadPart);
 
-      result.base = (uint8 *) sdlAlloc(partition, fileSize32);
+      result.base = (uint8 *) sdlPlatformAlloc(partition, fileSize32);
 
       if (result.base) {
 
@@ -131,6 +132,10 @@ sdlPlatformReadEntireFile(memory_partition* partition, char *filename) {
   }
 
 #else
+
+  strcpy(filepath, G_dataPath);
+  strcat(filepath, filename);
+
   int fileHandle = open(filepath, O_RDONLY);
   if (fileHandle == -1) {
     return result;
