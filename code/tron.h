@@ -34,17 +34,16 @@
 
 inline uint32
 safeTruncateUInt64(uint64 value) {
-  // TODO(casey): Defines for maximum values
   ASSERT(value <= 0xFFFFFFFF);
   uint32 result = (uint32) value;
   return result;
 }
 
 struct game_screen_buffer {
-	void *memory;
-	int width;
-	int height;
-	int pitch;
+  void *memory;
+  int width;
+  int height;
+  int pitch;
   int bytesPerPixel;
 };
 
@@ -58,8 +57,8 @@ struct bitmap_buffer {
 };
 
 struct game_button_state {
-	int halfTransitionCount;
-	bool32 endedDown;
+  int halfTransitionCount;
+  bool32 endedDown;
 };
 
 struct game_controller_input {
@@ -68,9 +67,9 @@ struct game_controller_input {
   real32 stickAverageX;
   real32 stickAverageY;
 
-	union {
-		game_button_state buttons[12];
-		struct {
+  union {
+    game_button_state buttons[12];
+    struct {
       game_button_state moveUp;
       game_button_state moveDown;
       game_button_state moveLeft;
@@ -90,8 +89,8 @@ struct game_controller_input {
       // NOTE(casey): All buttons must be added above this line
       
       game_button_state terminator;
-		};
-	};
+    };
+  };
 };
 
 struct game_input {
@@ -236,7 +235,7 @@ leastSignificantSetBit(uint32 value) {
   bit_scan_result result = {};
 
 #if _MSC_VER
-    result.found = _BitScanForward((unsigned long *) &result.index, value);
+  result.found = _BitScanForward((unsigned long *) &result.index, value);
 #else
 
   for (uint32 test = 0; test < 32; ++test) {
