@@ -32,11 +32,19 @@
 
 #define ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
 
+#define MINIMUM(A, B) ((A < B) ? (A) : (B))
+#define MAXIMUM(A, B) ((A > B) ? (A) : (B))
+
 inline uint32
 safeTruncateUInt64(uint64 value) {
   ASSERT(value <= 0xFFFFFFFF);
   uint32 result = (uint32) value;
   return result;
+}
+
+inline bool32 sign(int32 x) {
+  // assumes 32-bit int and 2s complement signed shifts work (implementation defined by C spec)
+  return (x >> 31) | ((uint32) -x >> 31);
 }
 
 struct game_screen_buffer {
@@ -144,23 +152,28 @@ struct v2 {
 };
 
 inline bool operator==(v2 a, v2 b) {
-  return (a.x == b.x) && (a.y == b.y);
+  bool result = (a.x == b.x) && (a.y == b.y);
+  return result;
 }
 
 inline bool operator!=(v2 a, v2 b) {
-  return ! (a == b);
+  bool result = ! (a == b);
+  return result;
 }
 
 inline real32 signReal32(real32 x) {
-  return  (real32) (x > 0.f) - (real32) (x < 0.f);
+  real32 result = (real32) (x > 0.f) - (real32) (x < 0.f);
+  return result;
 }
 
 inline real32 squareLen(v2 a) {
-  return (a.x * a.x) + (a.y * a.y);
+  real32 result = (a.x * a.x) + (a.y * a.y);
+  return result;
 }
 
 inline real32 square(real32 a) {
-  return a * a;
+  real32 result = a * a;
+  return result;
 }
 
 inline v2 operator*(real32 a, v2 b) {
@@ -197,7 +210,8 @@ inline v2 &operator+=(v2 &a, v2 b) {
 }
 
 inline real32 len(v2 a) {
-  return square(squareLen(a));
+  real32 result = square(squareLen(a));
+  return result;
 }
 
 enum directions {  
@@ -217,11 +231,17 @@ struct runner_state {
   directions direction;
 };
 
+struct wall {
+  v2 p1, p2;
+  real32 r, g, b;
+};
+
 struct game_state { 
   real32 pixelsPerMt;
   runner_bitmaps runnerBitmaps;
   int runnersCount;
   runner_state runners[2];
+  wall walls[4];
 };
 
 struct bit_scan_result {

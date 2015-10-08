@@ -123,6 +123,77 @@ copyBmp(memory_partition* memory, bitmap_buffer* dest, bitmap_buffer* src,
 }
 
 internal void
+drawLine(game_screen_buffer *buffer, 
+         real32 realX0, real32 realY0, 
+         real32 realX1, real32 realY1,
+         real32 R, real32 G, real32 B) {
+  
+  int32 x0 = (int32) roundf(realX0);
+  int32 y0 = (int32) roundf(realY0);
+  int32 x1 = (int32) roundf(realX1);
+  int32 y1 = (int32) roundf(realY1);
+
+  if (x0 < 0) {
+    x0 = 0;
+  }
+  if (x0 > buffer->width) {
+    x0 = buffer->width;
+  }
+  if (y0 < 0) {
+    y0 = 0;
+  }
+  if (y0 > buffer->height) {
+    y0 = buffer->height;
+  }
+  if (x1 < 0) {
+    x1 = 0;
+  }
+  if (x1 > buffer->width) {
+    x1 = buffer->width;
+  }
+  if (y1 < 0) {
+    y1 = 0;
+  }
+  if (y1 > buffer->height) {
+    y1 = buffer->height;
+  }
+
+  int32 dx = abs(x1 - x0);
+  int32 sx = (x0 < x1) ? 1 : -1;
+  int32 dy = abs(y1 - y0);
+  int32 sy = (y0 < y1) ? 1 : -1; 
+  int32 err = (dx > dy ? dx : -dy) / 2, e2;
+
+  uint32 color = (((int32) roundf(R * 255.0f) << 16) |
+                  ((int32) roundf(G * 255.0f) << 8) |
+                  ((int32) roundf(B * 255.0f) << 0));
+    
+
+ 
+  for (;;) {
+    uint8 *row = ((uint8 *) buffer->memory + 
+                 x0 * buffer->bytesPerPixel + 
+                 (buffer->height - y0 - 1) * buffer->pitch);
+
+    uint32 *pixel = (uint32 *) row;
+    *pixel = color;
+
+    if ((x0 == x1) && (y0 == y1)) { 
+      break; 
+    }
+    e2 = err;
+    if (e2 > -dx) { 
+      err -= dy; 
+      x0 += sx; 
+    }
+    if (e2 <  dy) { 
+      err += dx; 
+      y0 += sy; 
+    }
+  }
+}
+
+internal void
 drawRectangle(game_screen_buffer *buffer,
               real32 realMinX, real32 realMinY, real32 realMaxX, real32 realMaxY,
               real32 R, real32 G, real32 B) {    
@@ -159,8 +230,8 @@ drawRectangle(game_screen_buffer *buffer,
       }
       row -= buffer->pitch;
     }
-
 }
+
 internal void
 drawBitmap(game_screen_buffer *buffer, bitmap_buffer *bitmap, real32 realX, real32 realY,
            int32 alignX = 0, int32 alignY = 0, real32 cAlpha = 1.f) {
@@ -231,6 +302,27 @@ drawBitmap(game_screen_buffer *buffer, bitmap_buffer *bitmap, real32 realX, real
     }
 }
 
+internal bool
+hitsWall(v2 wallP0, v2 wallP1, v2 oldPos, v2 newPos) {
+
+  bool hit = false;
+
+  // real32 tEpsilon = 0.00001f;
+  // if (deltaPos.x != 0.0f) {
+  //   real32 tResult = (wallX - oldPos.x) / deltaPos.x;
+  //   real32 y = oldPos.y + tResult * deltaPos.y;
+  
+  //   if ((tResult >= 0.0f) && (*tMin > tResult))  {
+  //     if ((y >= minY) && (y <= maxY)) {
+  //       *tMin = MAXIMUM(0.0f, tResult - tEpsilon);
+  //       hit = true;
+  //     }
+  //   }
+  // }
+
+  return hit;
+}
+
 extern "C" void
 gameUpdateAndRender(game_memory* memory, game_input *input, game_screen_buffer *buffer) {
   
@@ -271,6 +363,11 @@ gameUpdateAndRender(game_memory* memory, game_input *input, game_screen_buffer *
     gameState->pixelsPerMt = 20.0f;
     gameState->runnersCount = 2;
 
+    gameState->walls[0] = {v2{1, 1}, v2{1, 22}, 1, 0, 0};
+    gameState->walls[1] = {v2{1, 1}, v2{31, 1}, 1, 0, 0};
+    gameState->walls[2] = {v2{31, 1}, v2{31, 22}, 1, 0, 0};
+    gameState->walls[3] = {v2{1, 22}, v2{31, 22}, 1, 0, 0};
+
     gameState->runners[0].bitmap = &runnerBitmaps->down[0];
     gameState->runners[0].direction = DIRECTION_DOWN;
 
@@ -279,13 +376,8 @@ gameUpdateAndRender(game_memory* memory, game_input *input, game_screen_buffer *
     gameState->runners[0].deltaAccel = 1.f;
     gameState->runners[0].deltaDrag = 4.f;
 
-    gameState->runners[1] = gameState->runners[0];
-
-    gameState->runners[0].position.x = 0;
-    gameState->runners[0].position.y = 0;
-
-    gameState->runners[1].position.x = (real32) (buffer->width - 28) / 2;
-    gameState->runners[1].position.y = (real32) (buffer->height - 37) / 2;
+    gameState->runners[0].position.x = 15;
+    gameState->runners[0].position.y = 10.5f;
 
     memory->isInitialized = true;
   }
@@ -407,18 +499,20 @@ gameUpdateAndRender(game_memory* memory, game_input *input, game_screen_buffer *
 
   drawRectangle(buffer, 0.f, 0.f, (real32) buffer->width, (real32) buffer->height, 0.f, 0.f, 0.f);
 
-  drawRectangle(buffer, 0, 0, 10, 10, 0, 0, 1);
-  drawRectangle(buffer, (real32) buffer->width - 10.f, 0.f, (real32) buffer->width, 10, 1.f, 0.f, 0.f);
-  drawRectangle(buffer, (real32) buffer->width - 10.f, (real32) buffer->height - 10, (real32) buffer->width, (real32) buffer->height, 0, 1, 0);
-  drawRectangle(buffer, 0.f, buffer->height - 10.f, 10.f, (real32) buffer->height, 1.f, 1.f, 0.f);
+  for (int wallIndex = 0; wallIndex < ARRAY_COUNT(gameState->walls); ++wallIndex) {
+    real32 x1 = gameState->walls[wallIndex].p1.x * gameState->pixelsPerMt; 
+    real32 y1 = gameState->walls[wallIndex].p1.y * gameState->pixelsPerMt;
+    real32 x2 = gameState->walls[wallIndex].p2.x * gameState->pixelsPerMt; 
+    real32 y2 = gameState->walls[wallIndex].p2.y * gameState->pixelsPerMt; 
+    real32 r = gameState->walls[wallIndex].r;
+    real32 g = gameState->walls[wallIndex].g;
+    real32 b = gameState->walls[wallIndex].b;
+    drawLine(buffer, x1, y1, x2, y2, r, g, b);
+  }
 
   int x0 = (int) (gameState->runners[0].position.x * gameState->pixelsPerMt);
   int y0 = (int) (gameState->runners[0].position.y * gameState->pixelsPerMt);
 
-  int x1 = (int) (gameState->runners[1].position.x);
-  int y1 = (int) (gameState->runners[1].position.y);
-
   drawBitmap(buffer, gameState->runners[0].bitmap, (real32) x0, (real32) y0);
 
-  drawBitmap(buffer, gameState->runners[1].bitmap, (real32) x1, (real32) y1);
 }
